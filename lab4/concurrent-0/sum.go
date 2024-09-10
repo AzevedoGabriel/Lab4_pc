@@ -10,7 +10,7 @@ import (
 func readFile(filePath string) ([]byte, error) {
 	data, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		fmt.Printf("Error reading file %s: %v", filePath, err)
+		fmt.Printf("Error reading file %s: %v\n", filePath, err)
 		return nil, err
 	}
 	return data, nil
@@ -31,7 +31,24 @@ func sum(filePath string) (int, error) {
 	return _sum, nil
 }
 
-// print the totalSum for all files and the files with equal sum
+func processFile(path string, ch chan<- struct {
+	sum  int
+	file string
+}, done chan<- bool) {
+	_sum, err := sum(path)
+	if err != nil {
+		done <- true
+		return
+	}
+
+	ch <- struct {
+		sum  int
+		file string
+	}{_sum, path}
+
+	done <- true
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: go run main.go <file1> <file2> ...")
@@ -40,19 +57,34 @@ func main() {
 
 	var totalSum int64
 	sums := make(map[int][]string)
+
+	
+	ch := make(chan struct {
+		sum  int
+		file string
+	})
+
+	done := make(chan bool)
+
+	numFiles := len(os.Args) - 1
+
 	for _, path := range os.Args[1:] {
-		_sum, err := go sum(path)
-
-		if err != nil {
-			continue
-		}
-
-		totalSum += int64(_sum)
-
-		sums[_sum] = append(sums[_sum], path)
+		go processFile(path, ch, done)
 	}
 
-	fmt.Println(totalSum)
+	go func() {
+		for i := 0; i < numFiles; i++ {
+			<-done 
+		}
+		close(ch) 
+	}()
+
+	for result := range ch {
+		totalSum += int64(result.sum)
+		sums[result.sum] = append(sums[result.sum], result.file)
+	}
+
+	fmt.Println("Total Sum:", totalSum)
 
 	for sum, files := range sums {
 		if len(files) > 1 {
